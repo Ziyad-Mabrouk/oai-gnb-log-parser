@@ -1,0 +1,37 @@
+name: Build & Push OAI gNB Log Parser image
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+env:
+  GHCR_USER: ziyad-mabrouk
+  REPO_NAME: oai-gnb-log-parser
+  TAG: latest
+
+jobs:
+
+  build-and-push:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout source
+      uses: actions/checkout@v4
+
+    - name: Log in to GHCR
+      run: echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ env.GHCR_USER }}" --password-stdin
+
+    - name: Build oai-gnb-
+      run: |
+        docker build --tag oai-gnb-metrics-parser:${{ env.TAG }} .
+
+    - name: Tag and push to GHCR
+      run: |
+        IMAGE_URI=ghcr.io/${{ env.GHCR_USER }}/oai-gnb-metrics-parser:${{ env.TAG }}
+        docker tag oai-gnb-metrics-parser:${{ env.TAG }} "$IMAGE_URI"
+        docker push "$IMAGE_URI"
+
+    - name: Log out of GHCR
+      if: always()
+      run: docker logout ghcr.io

@@ -31,6 +31,7 @@ def parse_logs():
                         collecting_matrix = True
                         blacklisted = int(match.group(1))
                         total = int(match.group(2))
+                        get_or_create_metric("oai_gnb_l1_total_prbs", "Total number of PRBs", []).set(total)
                         get_or_create_metric("oai_gnb_l1_blacklisted_prbs_total", "Number of blacklisted PRBs", []).set(blacklisted)
                         get_or_create_metric("oai_gnb_l1_blacklisted_prbs_ratio", "Ratio of blacklisted PRBs", []).set(blacklisted / total if total > 0 else 0)
                     elif match := re.search(r"DLSCH RNTI (\w+): .*?total_bytes TX (\d+)", line):

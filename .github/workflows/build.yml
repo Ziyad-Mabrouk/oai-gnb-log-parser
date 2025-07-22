@@ -22,7 +22,7 @@ jobs:
     - name: Log in to GHCR
       run: echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ env.GHCR_USER }}" --password-stdin
 
-    - name: Build oai-gnb-
+    - name: Build oai-gnb-log-parser
       run: |
         docker build --tag oai-gnb-metrics-parser:${{ env.TAG }} .
 

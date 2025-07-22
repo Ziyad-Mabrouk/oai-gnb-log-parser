@@ -132,9 +132,25 @@ def parse_logs():
                         continue
                     if match := re.search(r"last RRC activity: (\d+) seconds", line):
                         get_or_create_metric("oai_gnb_rrc_last_activity_secs", "Last RRC Activity", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(1)))
-                    if match := re.search(r"PDU session 0 ID (\d+) status (\w+)", line):
-                        status = 1 if match.group(2).lower() == "established" else 0
-                        get_or_create_metric("oai_gnb_rrc_pdu_session_established", "PDU Session Status", ["rnti", "session_id"]).labels(rnti=current_rnti, session_id=match.group(1)).set(status)
+                    # if match := re.search(r"PDU session 0 ID (\d+) status (\w+)", line):
+                    #     status = 1 if match.group(2).lower() == "established" else 0
+                    #     get_or_create_metric("oai_gnb_rrc_pdu_session_established", "PDU Session Status", ["rnti", "session_id"]).labels(rnti=current_rnti, session_id=match.group(1)).set(status)
+
+                    # RSRP/RSRQ/SINR
+                    if match := re.search(r"resultSSB:RSRP (-?\d+) dBm RSRQ (-?\d+\.\d+) dB SINR (-?\d+\.\d+) dB", line):
+                        get_or_create_metric("oai_gnb_rrc_rsrp", "RSRP in dBm", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(1)))
+                        get_or_create_metric("oai_gnb_rrc_rsrq", "RSRQ in dB", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(2)))
+                        get_or_create_metric("oai_gnb_rrc_sinr", "SINR in dB", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(3)))
+
+                # Parse gNB-level parameters after UE blocks
+                for line in lines:
+                    # SSB ARFCN
+                    if match := re.search(r"SSB ARFCN (\d+)", line):
+                        get_or_create_metric("oai_gnb_rrc_ssb_arfcn", "SSB ARFCN", []).set(int(match.group(1)))
+                    # ARFCN and SCS
+                    if match := re.search(r"ARFCN (\d+) SCS (\d+) \(kHz\)", line):
+                        get_or_create_metric("oai_gnb_rrc_arfcn", "ARFCN", []).set(int(match.group(1)))
+                        get_or_create_metric("oai_gnb_rrc_scs_khz", "Subcarrier Spacing (kHz)", []).set(int(match.group(2)))
     except Exception as e:
         print(f"[ERROR] RRC parsing failed: {e}")
 

@@ -73,6 +73,11 @@ def parse_logs():
                 current_rnti = None
                 current_cu_ue_id = None
                 for line in lines:
+                    if match := re.search(r"CU-UE-ID \(none\)", line):
+                        current_rnti = None
+                        current_cu_ue_id = None
+                        continue  # skip this UE completely
+
                     if match := re.search(r"UE RNTI (\w+) CU-UE-ID (\d+).*?PH (\d+) dB.*?PCMAX (\d+) dBm.*?average RSRP (-?\d+)", line):
                         current_rnti = match.group(1)
                         current_cu_ue_id = match.group(2)

@@ -48,6 +48,7 @@ def parse_logs():
                         get_or_create_metric("oai_gnb_l1_ulsch_rx_bytes", "ULSCH RX Bytes", ["rnti"]).labels(rnti=rnti).set(rx)
                         get_or_create_metric("oai_gnb_l1_ulsch_sched_bytes", "ULSCH Scheduled Bytes", ["rnti"]).labels(rnti=rnti).set(sched)
                     elif match := re.search(r"max_IO = (-?\d+) \((\d+)\), min_I0 = (-?\d+) \((\d+)\), avg_I0 = (-?\d+)", line):
+                        collecting_matrix = False
                         get_or_create_metric("oai_gnb_l1_i0_max_db", "Max subband I0 (dB)", []).set(int(match.group(1)))
                         get_or_create_metric("oai_gnb_l1_i0_min_db", "Min subband I0 (dB)", []).set(int(match.group(3)))
                         get_or_create_metric("oai_gnb_l1_i0_avg_db", "Average I0 across subbands (dB)", []).set(int(match.group(5)))
@@ -55,11 +56,8 @@ def parse_logs():
                         prach_i0 = float(f"{match.group(1)}.{match.group(2)}")
                         get_or_create_metric("oai_gnb_l1_prach_i0_db", "PRACH I0 value (dB)", []).set(prach_i0)
                     elif collecting_matrix:
-                        if re.match(r"^\s*(?:-?\d+\.)+(?:\s*)$", line):
-                            nums = [int(n.strip().replace('.', '')) for n in line.strip().split('.') if n.strip()]
-                            prb_noise_values.extend(nums)
-                        elif line.strip() == "":
-                            collecting_matrix = False  # Matrix ended
+                        nums = re.findall(r"-?\d+", line)
+                        prb_noise_values.extend(map(int, nums))
             
             for i, val in enumerate(prb_noise_values):
                 get_or_create_metric("oai_gnb_l1_i0_noise_offset_db", "PRB I0 noise deviation from average in dB", ["prb"]).labels(prb=str(i)).set(val)

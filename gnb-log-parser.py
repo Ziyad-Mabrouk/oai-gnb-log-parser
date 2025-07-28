@@ -60,7 +60,7 @@ def parse_logs():
                         prb_noise_values.extend(map(int, nums))
             
             for i, val in enumerate(prb_noise_values):
-                get_or_create_metric("oai_gnb_l1_i0_noise_offset_db", "PRB I0 noise deviation from average in dB", ["prb"]).labels(prb=i).set(val)
+                get_or_create_metric("oai_gnb_l1_i0_noise_offset_db", "PRB I0 noise deviation from average in dB", ["prb", "prb_index"]).labels(prb=str(i).zfill(3), prb_index=str(i)).set(val)
 
     except Exception as e:
         print(f"[ERROR] L1 parsing failed: {e}")

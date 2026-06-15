@@ -2,7 +2,6 @@ from prometheus_client import Gauge, CollectorRegistry, generate_latest, CONTENT
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import re
 import os
-from collections import defaultdict
 
 registry = CollectorRegistry()
 metric_defs = {}
@@ -34,19 +33,18 @@ def parse_logs():
                         get_or_create_metric("oai_gnb_l1_total_prbs", "Total number of PRBs", []).set(total)
                         get_or_create_metric("oai_gnb_l1_blacklisted_prbs_total", "Number of blacklisted PRBs", []).set(blacklisted)
                         get_or_create_metric("oai_gnb_l1_blacklisted_prbs_ratio", "Ratio of blacklisted PRBs", []).set(blacklisted / total if total > 0 else 0)
-                    elif match := re.search(r"DLSCH RNTI (\w+): .*?total_bytes TX (\d+)", line):
-                        metric = get_or_create_metric("oai_gnb_l1_dlsch_tx_bytes", "DLSCH TX Bytes", ["rnti"])
-                        metric.labels(rnti=match.group(1)).set(int(match.group(2)))
-                    elif match := re.search(r"ULSCH RNTI (\w+), \d+: .*?ulsch_power\[0\] ([\d,]+).*?ulsch_noise_power\[0\] ([\d.]+).*?total_bytes RX/SCHED (\d+)/(\d+)", line):
+                    elif match := re.search(r"DLSCH RNTI (\w+): current_Qm (\d+), current_RI (\d+), total_bytes TX (\d+)", line):
+                        get_or_create_metric("oai_gnb_l1_dlsch_current_qm", "Current DLSCH Modulation Order", ["rnti"]).labels(rnti=match.group(1)).set(int(match.group(2)))
+                        get_or_create_metric("oai_gnb_l1_dlsch_current_ri", "Current DLSCH Rank Indicator", ["rnti"]).labels(rnti=match.group(1)).set(int(match.group(3)))
+                        get_or_create_metric("oai_gnb_l1_dlsch_tx_bytes", "DLSCH TX Bytes", ["rnti"]).labels(rnti=match.group(1)).set(int(match.group(4)))
+                    elif match := re.search(r"ULSCH RNTI (\w+), \d+: .*?ulsch_power\[0\] ([\d,]+).*?ulsch_noise_power\[0\] ([\d.]+), sync_pos ([\d+])", line):
                         rnti = match.group(1)
                         power = float(match.group(2).replace(",", "."))
                         noise = float(match.group(3))
-                        rx = int(match.group(4))
-                        sched = int(match.group(5))
+                        sync_pos = int(match.group(4))
                         get_or_create_metric("oai_gnb_l1_ulsch_power", "ULSCH Power", ["rnti"]).labels(rnti=rnti).set(power)
                         get_or_create_metric("oai_gnb_l1_ulsch_noise_power", "ULSCH Noise Power", ["rnti"]).labels(rnti=rnti).set(noise)
-                        get_or_create_metric("oai_gnb_l1_ulsch_rx_bytes", "ULSCH RX Bytes", ["rnti"]).labels(rnti=rnti).set(rx)
-                        get_or_create_metric("oai_gnb_l1_ulsch_sched_bytes", "ULSCH Scheduled Bytes", ["rnti"]).labels(rnti=rnti).set(sched)
+                        get_or_create_metric("oai_gnb_l1_ulsch_sync_pos", "ULSCH Sync Position", ["rnti"]).labels(rnti=rnti).set(sync_pos)
                     elif match := re.search(r"max_IO = (-?\d+) \((\d+)\), min_I0 = (-?\d+) \((\d+)\), avg_I0 = (-?\d+)", line):
                         collecting_matrix = False
                         get_or_create_metric("oai_gnb_l1_i0_max_db", "Max subband I0 (dB)", []).set(int(match.group(1)))
@@ -88,17 +86,34 @@ def parse_logs():
                     if not current_rnti:
                         continue
 
-                    if match := re.search(r"UE .*?dlsch_rounds (\d+)/(\d+)/(\d+)/(\d+), dlsch_errors (\d+), pucch0_DTX (\d+), BLER ([\d.]+) MCS \(\d+\) (\d+)", line):
+                    if match := re.search(r"UE .*?CQI (\d+), RI (\d+), PMI\s*\(?([^,)\s]+(?:,[^,)\s]+)*)\)?", line):
+                        get_or_create_metric("oai_gnb_mac_cqi", "CQI", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(1)))
+                        get_or_create_metric("oai_gnb_mac_ri", "Rank Indicator", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(2)))
+
+                        pmi_raw = match.group(3).replace(" ", "")  # normalize spacing
+                        pmi_parts = pmi_raw.split(",")
+
+                        for i, v in enumerate(pmi_parts):
+                            get_or_create_metric("oai_gnb_mac_pmi", "PMI component", ["rnti", "index"]).labels(rnti=current_rnti, index=str(i)).set(int(v))
+
+                    if match := re.search(r"UE .*? dlsch_rounds (\d+)/(\d+)/(\d+)/(\d+), dlsch_errors (\d+), pucch0_DTX (\d+)(?: \(SNR ([+-]?\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?) dB\))?, BLER ([\d.]+) MCS \((\d+)\) (\d+) CCE fail (\d+), goodput ([\d.]+) Mbps", line):
                         get_or_create_metric("oai_gnb_mac_dlsch_rounds_a", "DLSCH HARQ Round A", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(1)))
                         get_or_create_metric("oai_gnb_mac_dlsch_rounds_b", "DLSCH HARQ Round B", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(2)))
                         get_or_create_metric("oai_gnb_mac_dlsch_rounds_c", "DLSCH HARQ Round C", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(3)))
                         get_or_create_metric("oai_gnb_mac_dlsch_rounds_d", "DLSCH HARQ Round D", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(4)))
                         get_or_create_metric("oai_gnb_mac_dlsch_errors", "DLSCH Errors", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(5)))
                         get_or_create_metric("oai_gnb_mac_pucch0_dtx", "PUCCH0 DTX", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(6)))
-                        get_or_create_metric("oai_gnb_mac_dl_bler", "DLSCH BLER", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(7)))
-                        get_or_create_metric("oai_gnb_mac_dl_mcs", "DLSCH MCS", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(8)))
 
-                    if match := re.search(r"UE .*?ulsch_rounds (\d+)/(\d+)/(\d+)/(\d+), ulsch_errors (\d+), ulsch_DTX (\d+), BLER ([\d.]+) MCS \(\d+\) (\d+) \(Qm (\d+) deltaMCS ([\d.-]+) dB\) NPRB (\d+)\s+SNR ([\d.]+)", line):
+                        if match.group(7) is not None:
+                            get_or_create_metric("oai_gnb_mac_pucch_snr_avg_db", "Average PUCCH SNR", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(7)))
+                            get_or_create_metric("oai_gnb_mac_pucch_snr_delta_db", "Difference between measured and target PUCCH SNR", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(8)))
+
+                        get_or_create_metric("oai_gnb_mac_dl_bler", "DLSCH BLER", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(9)))
+                        get_or_create_metric("oai_gnb_mac_dl_mcs", "DLSCH MCS", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(11)))
+                        get_or_create_metric("oai_gnb_mac_cce_fail", "CCE failures", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(12)))
+                        get_or_create_metric("oai_gnb_mac_dl_goodput_mbps","DL goodput Mbps",["rnti"]).labels(rnti=current_rnti).set(float(match.group(13)))
+
+                    if match := re.search(r"UE .*?ulsch_rounds (\d+)/(\d+)/(\d+)/(\d+), ulsch_errors (\d+), ulsch_DTX (\d+), BLER ([\d.]+) MCS \((\d+)\) (\d+) \(Qm (\d+) deltaMCS ([+-]?\d+(?:\.\d+)?) dB\) NPRB (\d+) SNR ([+-]?\d+(?:\.\d+)?) \(([+-]?\d+(?:\.\d+)?)\) dB CCE fail (\d+), goodput ([\d.]+) Mbps", line):
                         get_or_create_metric("oai_gnb_mac_ulsch_rounds_a", "ULSCH HARQ Round A", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(1)))
                         get_or_create_metric("oai_gnb_mac_ulsch_rounds_b", "ULSCH HARQ Round B", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(2)))
                         get_or_create_metric("oai_gnb_mac_ulsch_rounds_c", "ULSCH HARQ Round C", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(3)))
@@ -106,15 +121,15 @@ def parse_logs():
                         get_or_create_metric("oai_gnb_mac_ulsch_errors", "ULSCH Errors", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(5)))
                         get_or_create_metric("oai_gnb_mac_ulsch_dtx", "ULSCH DTX", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(6)))
                         get_or_create_metric("oai_gnb_mac_ul_bler", "ULSCH BLER", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(7)))
-                        get_or_create_metric("oai_gnb_mac_ul_mcs", "ULSCH MCS", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(8)))
-                        get_or_create_metric("oai_gnb_mac_qm", "Modulation Order Qm", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(9)))
-                        get_or_create_metric("oai_gnb_mac_delta_mcs", "Delta MCS dB", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(10)))
-                        get_or_create_metric("oai_gnb_mac_nprb", "Number of PRBs", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(11)))
-                        get_or_create_metric("oai_gnb_mac_snr", "ULSCH SNR", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(12)))
-
-                    if match := re.search(r"MAC:\s+TX\s+(\d+)\s+RX\s+(\d+)", line):
-                        get_or_create_metric("oai_gnb_mac_tx_bytes", "MAC TX Bytes", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(1)))
-                        get_or_create_metric("oai_gnb_mac_rx_bytes", "MAC RX Bytes", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(2)))
+                        get_or_create_metric("oai_gnb_mac_ul_mcs_index", "ULSCH MCS index in parentheses", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(8)))
+                        get_or_create_metric("oai_gnb_mac_ul_mcs", "ULSCH MCS value", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(9)))
+                        get_or_create_metric("oai_gnb_mac_qm", "Modulation Order Qm", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(10)))
+                        get_or_create_metric("oai_gnb_mac_delta_mcs", "Delta MCS dB", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(11)))
+                        get_or_create_metric("oai_gnb_mac_nprb", "Allocated PRBs", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(12)))
+                        get_or_create_metric("oai_gnb_mac_ul_snr_avg_db", "Average ULSCH SNR", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(13)))
+                        get_or_create_metric("oai_gnb_mac_ul_snr_delta_db", "Difference between measured and target ULSCH SNR", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(14)))
+                        get_or_create_metric("oai_gnb_mac_cce_fail","CCE Failures", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(15)))
+                        get_or_create_metric("oai_gnb_mac_ul_goodput_mbps", "UL Goodput", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(16)))
 
                     if match := re.search(r"LCID (\d+): TX\s+(\d+)\s+RX\s+(\d+)", line):
                         get_or_create_metric("oai_gnb_mac_lcid_tx_bytes", "LCID TX Bytes", ["rnti", "lcid"]).labels(rnti=current_rnti, lcid=match.group(1)).set(int(match.group(2)))
@@ -127,23 +142,6 @@ def parse_logs():
         if os.path.isfile(log_paths["rrc"]):
             with open(log_paths["rrc"], "r") as f:
                 lines = f.readlines()
-                current_rnti = None
-                for line in lines:
-                    if match := re.search(r"RNTI (\w+)", line):
-                        current_rnti = match.group(1)
-                    if not current_rnti:
-                        continue
-                    if match := re.search(r"last RRC activity: (\d+) seconds", line):
-                        get_or_create_metric("oai_gnb_rrc_last_activity_secs", "Last RRC Activity", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(1)))
-                    # if match := re.search(r"PDU session 0 ID (\d+) status (\w+)", line):
-                    #     status = 1 if match.group(2).lower() == "established" else 0
-                    #     get_or_create_metric("oai_gnb_rrc_pdu_session_established", "PDU Session Status", ["rnti", "session_id"]).labels(rnti=current_rnti, session_id=match.group(1)).set(status)
-
-                    # RSRP/RSRQ/SINR
-                    if match := re.search(r"resultSSB:RSRP (-?\d+) dBm RSRQ (-?\d+\.\d+) dB SINR (-?\d+\.\d+) dB", line):
-                        get_or_create_metric("oai_gnb_rrc_rsrp", "RSRP in dBm", ["rnti"]).labels(rnti=current_rnti).set(int(match.group(1)))
-                        get_or_create_metric("oai_gnb_rrc_rsrq", "RSRQ in dB", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(2)))
-                        get_or_create_metric("oai_gnb_rrc_sinr", "SINR in dB", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(3)))
 
                 # Parse gNB-level parameters after UE blocks
                 for line in lines:

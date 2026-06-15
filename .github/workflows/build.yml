@@ -7,7 +7,6 @@ on:
 env:
   GHCR_USER: ziyad-mabrouk
   REPO_NAME: oai-gnb-log-parser
-  TAG: latest
 
 jobs:
 
@@ -17,6 +16,9 @@ jobs:
     steps:
     - name: Checkout source
       uses: actions/checkout@v4
+
+    - name: Set image tag (branch name)
+      run: echo "TAG=${GITHUB_REF_NAME}" >> $GITHUB_ENV
 
     - name: Log in to GHCR
       run: echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ env.GHCR_USER }}" --password-stdin

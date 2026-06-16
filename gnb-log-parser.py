@@ -18,6 +18,11 @@ def get_or_create_metric(metric_name, description, labelnames):
     return metric_defs[metric_name]
 
 def parse_logs():
+    global registry, metric_defs
+    # Reset registry and metrics to avoid exporting stale values
+    registry = CollectorRegistry()
+    metric_defs = {}
+
     # L1 stats
     try:
         if os.path.isfile(log_paths["l1"]):

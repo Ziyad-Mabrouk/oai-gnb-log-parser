@@ -158,10 +158,16 @@ def parse_logs():
                     if match := re.search(r"goodput DL\s+([\d.]+)\s+UL\s+([\d.]+)\s+Mbps", line):
                         get_or_create_metric("oai_gnb_mac_dl_goodput_mbps","DL goodput Mbps",["rnti"]).labels(rnti=current_rnti).set(float(match.group(1)))
                         get_or_create_metric("oai_gnb_mac_ul_goodput_mbps", "UL Goodput", ["rnti"]).labels(rnti=current_rnti).set(float(match.group(2)))
+                        # Active logical channels listed before goodput, e.g. "LCID 1,2,4,"
+                        # (LCID 4 = first DRB, used to count UEs with an established data bearer)
+                        if lcids := re.search(r"LCID ([\d,]+), goodput", line):
+                            for lcid in filter(None, lcids.group(1).split(",")):
+                                get_or_create_metric("oai_gnb_mac_lcid_active", "Logical channel present for this UE (1 = listed in MAC stats)", ["rnti", "lcid"]).labels(rnti=current_rnti, lcid=lcid).set(1)
 
                     if match := re.search(r"LCID (\d+): TX\s+(\d+)\s+RX\s+(\d+)", line):
                         get_or_create_metric("oai_gnb_mac_lcid_tx_bytes", "LCID TX Bytes", ["rnti", "lcid"]).labels(rnti=current_rnti, lcid=match.group(1)).set(int(match.group(2)))
                         get_or_create_metric("oai_gnb_mac_lcid_rx_bytes", "LCID RX Bytes", ["rnti", "lcid"]).labels(rnti=current_rnti, lcid=match.group(1)).set(int(match.group(3)))
+                        get_or_create_metric("oai_gnb_mac_lcid_active", "Logical channel present for this UE (1 = listed in MAC stats)", ["rnti", "lcid"]).labels(rnti=current_rnti, lcid=match.group(1)).set(1)
     except Exception as e:
         print(f"[ERROR] MAC parsing failed: {e}")
 
